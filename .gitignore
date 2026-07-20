@@ -1,0 +1,12 @@
+# Скомпилированные бинарники
+*.exe
+*.dll
+credit-card-validator
+
+# Папки IDE
+.idea/
+.vscode/
+
+# Временные файлы
+*.tmp
+.DS_Store
