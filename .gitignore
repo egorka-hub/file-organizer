@@ -2,6 +2,11 @@
 *.exe
 *.dll
 credit-card-validator
+file-organizer
+
+# Логи и тестовые данные организатора
+*.log
+test_files/
 
 # Папки IDE
 .idea/
