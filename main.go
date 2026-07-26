@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 var DefaultRules = map[string]string{
 	".jpg":  "Images",
 	".jpeg": "Images",
@@ -17,5 +19,7 @@ var DefaultRules = map[string]string{
 }
 
 func main() {
-
+	for ext, folder := range DefaultRules {
+		fmt.Printf("Расширение: %s -> Папка: %s\n", ext, folder)
+	}
 }
