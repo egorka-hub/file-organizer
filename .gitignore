@@ -1,7 +1,6 @@
 # Скомпилированные бинарники
 *.exe
 *.dll
-credit-card-validator
 file-organizer
 
 # Логи и тестовые данные организатора
