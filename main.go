@@ -31,6 +31,13 @@ type FileOrganizer struct {
 	rulesMap       map[string]string
 	processedFiles int
 	logFile        *os.File
+	statistics     map[string]*FileStats
+	totalSize      int64
+}
+
+type FileStats struct {
+	processedFiles int
+	totalSize      int64
 }
 
 func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
@@ -48,8 +55,9 @@ func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
 	}
 
 	return &FileOrganizer{
-		sourceDir: sourceDir,
-		rulesMap:  DefaultRules,
+		sourceDir:  sourceDir,
+		rulesMap:   DefaultRules,
+		statistics: make(map[string]*FileStats),
 	}, nil
 
 }
@@ -110,6 +118,21 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 	}
 	fo.logSuccess(fmt.Sprintf("Moved file: %s -> %s", sourcePath, dstPath))
 
+	info, err := os.Stat(dstPath)
+	if err != nil {
+		fo.logError(fmt.Sprintf("cannot stat file %s: %v", dstPath, err))
+		return fmt.Errorf("cannot stat file: %w", err)
+	}
+
+	fo.totalSize += info.Size()
+
+	if _, ok := fo.statistics[targetDir]; !ok {
+		fo.statistics[targetDir] = &FileStats{}
+	}
+
+	fo.statistics[targetDir].processedFiles++
+	fo.statistics[targetDir].totalSize += info.Size()
+
 	return nil
 }
 
@@ -147,6 +170,22 @@ func (fo *FileOrganizer) Organize() error {
 	})
 
 	return err
+}
+
+func (fs *FileStats) String() string {
+	return fmt.Sprintf("Файлов: %d, Размер: %.2f KB", fs.processedFiles, float64(fs.totalSize)/1024)
+}
+
+func (fo *FileOrganizer) generateReport() string {
+	var report strings.Builder
+	report.WriteString("=== Отчёт о перемещении файлов ===\n\n")
+	report.WriteString(fmt.Sprintf("Всего обработано файлов: %d\n", fo.processedFiles))
+	report.WriteString(fmt.Sprintf("Общий размер: %.2f KB\n\n", float64(fo.totalSize)/1024))
+	report.WriteString("Статистика по категориям:\n\n")
+	for category, stats := range fo.statistics {
+		report.WriteString(fmt.Sprintf("%s:\n  %s\n\n", category, stats))
+	}
+	return report.String()
 }
 
 func main() {
