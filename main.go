@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io/fs"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,9 +56,12 @@ func NewFileOrganizer(sourceDir string) (*FileOrganizer, error) {
 		return nil, fmt.Errorf("sourceDir must be a directory")
 	}
 
+	rulesMap := make(map[string]string, len(DefaultRules))
+	maps.Copy(rulesMap, DefaultRules)
+
 	return &FileOrganizer{
 		sourceDir:  sourceDir,
-		rulesMap:   DefaultRules,
+		rulesMap:   rulesMap,
 		statistics: make(map[string]*FileStats),
 	}, nil
 
@@ -74,12 +79,12 @@ func (fo *FileOrganizer) initLog() error {
 	return nil
 }
 
-func (fo *FileOrganizer) logSuccess(message string) {
-	log.Printf("[SUCCESS] %s", message)
+func (fo *FileOrganizer) logSuccess(format string, args ...any) {
+	log.Printf("[SUCCESS] "+format, args...)
 }
 
-func (fo *FileOrganizer) logError(message string) {
-	log.Printf("[ERROR] %s", message)
+func (fo *FileOrganizer) logError(format string, args ...any) {
+	log.Printf("[ERROR] "+format, args...)
 }
 
 func (fo *FileOrganizer) Close() error {
@@ -92,12 +97,18 @@ func (fo *FileOrganizer) Close() error {
 func (fo *FileOrganizer) moveFile(sourcePath, targetDir string, info os.FileInfo) error {
 	fullPath := filepath.Join(fo.sourceDir, targetDir)
 
-	err := os.MkdirAll(fullPath, 0755)
-	if err != nil {
-		fo.logError(fmt.Sprintf("cannot create directory %s: %v", fullPath, err))
+	dirExisted := true
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
+		dirExisted = false
+	}
+
+	if err := os.MkdirAll(fullPath, 0755); err != nil {
+		fo.logError("cannot create directory %s: %v", fullPath, err)
 		return fmt.Errorf("cannot create directory: %w", err)
 	}
-	fo.logSuccess(fmt.Sprintf("Created directory: %s", fullPath))
+	if !dirExisted {
+		fo.logSuccess("Created directory: %s", fullPath)
+	}
 
 	name := filepath.Base(sourcePath)
 
@@ -111,12 +122,12 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string, info os.FileInfo
 		dstPath = filepath.Join(fullPath, name)
 	}
 
-	err = os.Rename(sourcePath, dstPath)
+	err := os.Rename(sourcePath, dstPath)
 	if err != nil {
-		fo.logError(fmt.Sprintf("cannot move file %s to %s: %v", sourcePath, dstPath, err))
+		fo.logError("cannot move file %s to %s: %v", sourcePath, dstPath, err)
 		return fmt.Errorf("cannot move file: %w", err)
 	}
-	fo.logSuccess(fmt.Sprintf("Moved file: %s -> %s", sourcePath, dstPath))
+	fo.logSuccess("Moved file: %s -> %s", sourcePath, dstPath)
 
 	fo.totalSize += info.Size()
 
@@ -171,34 +182,60 @@ func (fo *FileOrganizer) Organize() error {
 	return err
 }
 
-func (fs *FileStats) String() string {
-	return fmt.Sprintf("Файлов: %d, Размер: %.2f KB", fs.processedFiles, float64(fs.totalSize)/1024)
+func (stats *FileStats) String() string {
+	return fmt.Sprintf("Файлов: %d, Размер: %.2f KB", stats.processedFiles, float64(stats.totalSize)/1024)
 }
 
 func (fo *FileOrganizer) generateReport() string {
 	var report strings.Builder
 	report.WriteString("=== Отчёт о перемещении файлов ===\n\n")
-	report.WriteString(fmt.Sprintf("Всего обработано файлов: %d\n", fo.processedFiles))
-	report.WriteString(fmt.Sprintf("Общий размер: %.2f KB\n\n", float64(fo.totalSize)/1024))
+	_, _ = fmt.Fprintf(&report, "Всего обработано файлов: %d\n", fo.processedFiles)
+	_, _ = fmt.Fprintf(&report, "Общий размер: %.2f KB\n\n", float64(fo.totalSize)/1024)
 	report.WriteString("Статистика по категориям:\n\n")
 	for category, stats := range fo.statistics {
-		report.WriteString(fmt.Sprintf("%s:\n  %s\n\n", category, stats))
+		_, _ = fmt.Fprintf(&report, "%s:\n  %s\n\n", category, stats)
 	}
 	return report.String()
 }
 
 func main() {
-	organizer, err := NewFileOrganizer("./test_files")
+	fmt.Println("=== File Organizer ===")
+
+	fmt.Print("Введите путь к директории для организации (Enter для текущей директории): ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+
+	var sourcePath string
+	if scanner.Scan() {
+		sourcePath = strings.TrimSpace(scanner.Text())
+	} else if err := scanner.Err(); err != nil {
+		fmt.Println("cannot read input:", err)
+		os.Exit(1)
+	}
+
+	if sourcePath == "" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Println("cannot get current directory:", err)
+			os.Exit(1)
+		}
+		sourcePath = cwd
+	}
+
+	organizer, err := NewFileOrganizer(sourcePath)
 	if err != nil {
 		fmt.Println("cannot create organizer:", err)
 		os.Exit(1)
 	}
 
-	if err := organizer.initLog(); err != nil {
-		fmt.Println("cannot init log:", err)
-		os.Exit(1)
-	}
 	defer organizer.Close()
 
-	fmt.Printf("FileOrganizer создан для директории: %s\n", organizer.sourceDir)
+	if err := organizer.Organize(); err != nil {
+		fmt.Println("cannot organize files:", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(organizer.generateReport())
+
+	fmt.Println("Организация завершена! Подробности в файле organizer.log")
 }
