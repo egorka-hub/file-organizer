@@ -89,7 +89,7 @@ func (fo *FileOrganizer) Close() error {
 	return fo.logFile.Close()
 }
 
-func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
+func (fo *FileOrganizer) moveFile(sourcePath, targetDir string, info os.FileInfo) error {
 	fullPath := filepath.Join(fo.sourceDir, targetDir)
 
 	err := os.MkdirAll(fullPath, 0755)
@@ -117,12 +117,6 @@ func (fo *FileOrganizer) moveFile(sourcePath, targetDir string) error {
 		return fmt.Errorf("cannot move file: %w", err)
 	}
 	fo.logSuccess(fmt.Sprintf("Moved file: %s -> %s", sourcePath, dstPath))
-
-	info, err := os.Stat(dstPath)
-	if err != nil {
-		fo.logError(fmt.Sprintf("cannot stat file %s: %v", dstPath, err))
-		return fmt.Errorf("cannot stat file: %w", err)
-	}
 
 	fo.totalSize += info.Size()
 
@@ -159,7 +153,12 @@ func (fo *FileOrganizer) Organize() error {
 			return nil
 		}
 
-		if err := fo.moveFile(path, category); err != nil {
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+
+		if err := fo.moveFile(path, category, info); err != nil {
 			return err
 		}
 
